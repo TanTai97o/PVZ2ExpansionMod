@@ -1,0 +1,38 @@
+name: Build PVZ2ExpansionMod
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;25.2.9519653'
+
+      - name: Build ARM (armeabi-v7a)
+        run: |
+          NDK_PATH=$ANDROID_SDK_ROOT/ndk/25.2.9519653
+          cmake -B build-arm \
+            -DCMAKE_TOOLCHAIN_FILE=$NDK_PATH/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=armeabi-v7a \
+            -DANDROID_PLATFORM=android-21 \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-arm --config Release
+
+      - name: Upload ARM lib
+        uses: actions/upload-artifact@v4
+        with:
+          name: libPVZ2ExpansionMod-armeabi-v7a
+          path: build-arm/libPVZ2ExpansionMod.so
+          
