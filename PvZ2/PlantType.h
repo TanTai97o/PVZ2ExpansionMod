@@ -50,10 +50,6 @@ public:
 	{
 		oPlantTypeConstruct(self);
 
-		// Dang ky typename vao danh sach mod
-		extern std::vector<PlantType*> g_modPlantTypenames;
-		g_modPlantTypenames.push_back(self);
-
 		self->IntegerID = 0;
 		self->HasShadow = true;
 		self->HasStoreShadow = true;
