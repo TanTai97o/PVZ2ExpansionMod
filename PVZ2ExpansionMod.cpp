@@ -123,42 +123,6 @@ Reflection::CRefManualSymbolBuilder::ConstructFunc    PlantType::oPlantTypeConst
 Reflection::CRefManualSymbolBuilder::BuildSymbolsFunc ZombieType::oZombieTypeBuildSymbols = nullptr;
 Reflection::CRefManualSymbolBuilder::ConstructFunc    ZombieType::oZombieTypeConstruct    = nullptr;
 
-// --------------------------------------------------------
-//  PlantType::construct — hook duy nhat tai 0x8D3150
-//
-//  Gop chung logic cua hkPlantTypeCtor (cu) vao day:
-//    - Goi original
-//    - Dang ky typename vao g_modPlantTypenames
-//    - Init extended fields
-//    - Per-plant PopAnim overrides
-// --------------------------------------------------------
-void* PlantType::construct(PlantType* self)
-{
-    oPlantTypeConstruct(self);
-
-    // Dang ky typename (truoc day la hook rieng hkPlantTypeCtor)
-    g_modPlantTypenames.push_back(self);
-
-    // Init extended fields
-    self->IntegerID      = 0;
-    self->HasShadow      = true;
-    self->HasStoreShadow = true;
-    self->ShadowScale    = 1.0f;
-    self->ShadowOffset   = SexyVector2();
-
-    return self;
-}
-
-void PlantType::buildSymbols(Reflection::CRefManualSymbolBuilder* builder, Reflection::RClass* rclass)
-{
-    oPlantTypeBuildSymbols(builder, rclass);
-    REGISTER_STANDARD_PROPERTY(builder, rclass, PlantType, IntegerID);
-    REGISTER_STANDARD_PROPERTY(builder, rclass, PlantType, HasShadow);
-    REGISTER_STANDARD_PROPERTY(builder, rclass, PlantType, HasStoreShadow);
-    REGISTER_STANDARD_PROPERTY(builder, rclass, PlantType, ShadowScale);
-    REGISTER_CLASS_PROPERTY(builder, rclass, PlantType, SexyVector2, ShadowOffset);
-}
-
 #pragma endregion
 
 __attribute__((constructor))
