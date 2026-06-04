@@ -17,6 +17,7 @@
 #include "PvZ2/Zombie_EightiesArcade.h"
 #include "PvZ2/Zombie_Camel.h"
 #include "PvZ2/Plant_DoomShroom.h"
+#include "PvZ2/PlantAnimRig_DoomShroom.h"
 
 
 #pragma region Alias to ID
@@ -35,8 +36,25 @@ public:
     std::map<SexyString, int> m_aliasToId;
 };
 
+// used for the custom id system
+// can be used for typename list for restriction sets
 std::vector<PlantType*> g_modPlantTypenames;
 std::vector<ZombieType*> g_modZombieTypenames;
+
+#define REGISTER_PLANT_TYPENAME(typename) \
+    g_modPlantTypenames.push_back(typename); \
+
+#define REGISTER_ZOMBIE_TYPENAME(typename) \
+    g_modZombieTypenames.push_back(typename); \
+
+typedef void* (*plantTypeCtor)(PlantType*);
+plantTypeCtor oPlantTypeCtor = nullptr;
+
+void* hkPlantTypeCtor(PlantType* self)
+{
+    REGISTER_PLANT_TYPENAME(self);
+    return oPlantTypeCtor(self);
+}
 
 typedef PlantNameMapper* (*PlantNameMapperCtor)(PlantNameMapper*);
 PlantNameMapperCtor oPlantNameMapperCtor = nullptr;
@@ -50,9 +68,19 @@ void* hkCreatePlantNameMapper(PlantNameMapper* self)
     {
         PlantType* type = g_modPlantTypenames[iter];
         self->m_aliasToId[type->TypeName] = type->IntegerID;
+        //LOGI("Registered plant typename %s with ID %d", type->TypeName.c_str(), type->IntegerID);
     }
 
     return self;
+}
+
+typedef void* (*zombieTypeCtor)(ZombieType*);
+zombieTypeCtor oZombieTypeCtor = nullptr;
+
+void* hkZombieTypeCtor(ZombieType* self)
+{
+    REGISTER_ZOMBIE_TYPENAME(self);
+    return oZombieTypeCtor(self);
 }
 
 typedef ZombieAlmanac* (*ZombieAlmanacCtor)(ZombieAlmanac*);
@@ -67,6 +95,7 @@ void* hkCreateZombieTypenameMap(ZombieAlmanac* self)
     {
         auto* type = g_modZombieTypenames[iter];
         self->m_aliasToId[type->TypeName] = type->IntegerID;
+        //LOGI("Registered zombie typename %s with ID %d", type->TypeName.c_str(), type->IntegerID);
     }
 
     return self;
@@ -87,8 +116,17 @@ camelMinigameModuleFunc cmmFunc = (camelMinigameModuleFunc)getActualOffset(CAMEL
 
 void hkCamelZombieFunc(int a1, int a2, int a3)
 {
+    // Redirect call to some function in CamelMinigameModule
+    // This fixes the crash when camels are rising from the ground
     cmmFunc(a1, a2, a3);
 }
+
+#pragma endregion
+
+#pragma region Vertical World Map Scrolling
+
+// the proper function is WorldMap::Init that sets up the X axis boundaries
+// I think it should be called every time a world map is entered
 
 #pragma endregion
 
@@ -98,12 +136,16 @@ typedef int64_t (*mGetBoard)();
 mGetBoard oGetBoard = nullptr;
 
 Board* hkGetBoard() {
+    // just making this available for own use
     return (Board*)oGetBoard();
 }
 
 Board* getBoard() {
     return hkGetBoard();
 }
+
+// todo: find 2 functions that calculate board zoom
+// maybe its in LawnApp vftable
 
 typedef void(*boardTest)(Board*, int*, int, int);
 boardTest oBoardTest = nullptr;
@@ -119,49 +161,38 @@ void hkBoardTest(Board* self, int* a2, int a3, int a4)
 #pragma region Build Symbol Funcs
 
 Reflection::CRefManualSymbolBuilder::BuildSymbolsFunc PlantType::oPlantTypeBuildSymbols = nullptr;
-Reflection::CRefManualSymbolBuilder::ConstructFunc    PlantType::oPlantTypeConstruct    = nullptr;
+Reflection::CRefManualSymbolBuilder::ConstructFunc PlantType::oPlantTypeConstruct = nullptr;
 Reflection::CRefManualSymbolBuilder::BuildSymbolsFunc ZombieType::oZombieTypeBuildSymbols = nullptr;
-Reflection::CRefManualSymbolBuilder::ConstructFunc    ZombieType::oZombieTypeConstruct    = nullptr;
+Reflection::CRefManualSymbolBuilder::ConstructFunc ZombieType::oZombieTypeConstruct = nullptr;
 
 #pragma endregion
 
 __attribute__((constructor))
+// This is automatically executed when the lib is loaded
+// Run your initialization code here
 void libPVZ2ExpansionMod_main()
 {
-    LOGI("Initializing %s", LIB_TAG);
+	LOGI("Initializing %s", LIB_TAG);
 
-    // --------------------------------------------------------
-    //  PlantType hooks
-    //  0x8D3150 chi hook 1 lan — PlantType::construct da gop
-    //  ca logic dang ky typename lan per-plant overrides.
-    // --------------------------------------------------------
-    PVZ2HookFunction(0x8D3150, (void*)PlantType::construct,    (void**)&PlantType::oPlantTypeConstruct);
-    PVZ2HookFunction(0x8D1FE8, (void*)PlantType::buildSymbols, (void**)&PlantType::oPlantTypeBuildSymbols);
+    // Function hooks
+    PVZ2HookFunction(0x8D3150, (void*)hkPlantTypeCtor, (void**)&oPlantTypeCtor);
     PVZ2HookFunction(0xDA5C58, (void*)hkCreatePlantNameMapper, (void**)&oPlantNameMapperCtor);
+    PVZ2HookFunction(0xCA5768, (void*)hkZombieTypeCtor, (void**)&oZombieTypeCtor);
+    PVZ2HookFunction(0x10643E0, (void*)hkCreateZombieTypenameMap, (void**)&oZombieAlmanacCtor);
 
-    // --------------------------------------------------------
-    //  ZombieType hooks
-    // --------------------------------------------------------
-    PVZ2HookFunction(0xCA5768, (void*)ZombieType::construct,      (void**)&ZombieType::oZombieTypeConstruct);
-    PVZ2HookFunction(0xCA5894, (void*)ZombieType::buildSymbols,   (void**)&ZombieType::oZombieTypeBuildSymbols);
-    PVZ2HookFunction(0x10643E0,(void*)hkCreateZombieTypenameMap,  (void**)&oZombieAlmanacCtor);
+    PVZ2HookFunction(0x8D3150, (void*)PlantType::construct, (void**)&PlantType::oPlantTypeConstruct);
+    PVZ2HookFunction(0x8D1FE8, (void*)PlantType::buildSymbols, (void**)&PlantType::oPlantTypeBuildSymbols);
+    PVZ2HookFunction(0xCA5768, (void*)ZombieType::construct, (void**)&ZombieType::oZombieTypeConstruct);
+    PVZ2HookFunction(0xCA5894, (void*)ZombieType::buildSymbols, (void**)&ZombieType::oZombieTypeBuildSymbols);
 
-    // --------------------------------------------------------
-    //  Misc hooks
-    // --------------------------------------------------------
     PVZ2HookFunction(0x789DC8, (void*)hkCamelZombieFunc, nullptr);
-    PVZ2HookFunction(0x949EFC, (void*)hkGetBoard,        (void**)&oGetBoard);
-    PVZ2HookFunction(0x724520, (void*)hkBoardTest,       (void**)&oBoardTest);
+    PVZ2HookFunction(0x949EFC, (void*)hkGetBoard, (void**)&oGetBoard);
+    PVZ2HookFunction(0x724520, (void*)hkBoardTest, (void**)&oBoardTest);
 
-    // --------------------------------------------------------
-    //  Per-module init
-    //  PlantDoomShroom::modInit() dang ky RtClass "PlantDoomShroom"
-    //  vao engine — phai goi truoc khi bat ky PlantType nao
-    //  co PlantFramework = "PlantDoomShroom" duoc load.
-    // --------------------------------------------------------
     PowerLilyProps::modInit();
     ZombieEightiesArcadeProps::modInit();
-    PlantDoomShroom::modInit();
+	PlantDoomShroom::modInit();
+	PlantAnimRig_DoomShroom::modInit();
 
     //ZombieCamel::modInit();
 
